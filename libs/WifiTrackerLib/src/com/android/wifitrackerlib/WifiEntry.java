@@ -408,6 +408,14 @@ public class WifiEntry {
     }
 
     /**
+     * Returns whether this network should display its SSID separately from the title
+     * (e.g. the Network Details page), for networks whose display titles differ from the SSID.
+     */
+    public boolean shouldShowSsid() {
+        return false;
+    }
+
+    /**
      * Returns the SSID of the entry, if applicable. Null otherwise.
      */
     @Nullable
@@ -488,6 +496,14 @@ public class WifiEntry {
      * Indicates whether or not an entry is for a subscription.
      */
     public boolean isSubscription() {
+        return false;
+    }
+
+    /**
+     * Returns whether this entry needs to be configured with a new WifiConfiguration before
+     * connection.
+     */
+    public boolean needsWifiConfiguration() {
         return false;
     }
 
