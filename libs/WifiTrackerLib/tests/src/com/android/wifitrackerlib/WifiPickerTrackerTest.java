@@ -2388,6 +2388,7 @@ public class WifiPickerTrackerTest {
 
         verify(mMockSharedConnectivityManager).getKnownNetworks();
         verify(mMockSharedConnectivityManager).getHotspotNetworks();
+        verify(mMockSharedConnectivityManager).getHotspotNetworkConnectionStatus();
     }
 
     @Test
