@@ -80,7 +80,6 @@ import android.util.Pair;
 import androidx.annotation.NonNull;
 import androidx.lifecycle.Lifecycle;
 
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -214,17 +213,7 @@ public class WifiPickerTrackerTest {
         when(mMockContext.getSystemService(SharedConnectivityManager.class))
                 .thenReturn(mMockSharedConnectivityManager);
         when(mMockContext.getString(anyInt())).thenReturn("");
-        when(mMockResources.getStringArray(R.array.wifitrackerlib_wifi_status)).thenReturn(
-                new String[]{"", "Scanning", "Connecting", "Authenticating", "Obtaining IP address",
-                        "Connected", "Suspended", "Disconnecting", "Unsuccessful", "Blocked",
-                        "Temporarily avoiding poor connection"});
-
-        BaseWifiTracker.mEnableSharedConnectivityFeature = true;
-    }
-
-    @After
-    public void tearDown() {
-        BaseWifiTracker.mEnableSharedConnectivityFeature = false;
+        when(mInjector.isSharedConnectivityFeatureEnabled()).thenReturn(true);
     }
 
     /**
@@ -2170,6 +2159,7 @@ public class WifiPickerTrackerTest {
                         .Builder("My Phone", "Pixel 7")
                         .setDeviceType(NetworkProviderInfo.DEVICE_TYPE_PHONE)
                         .setBatteryPercentage(100)
+                        .setBatteryCharging(true)
                         .setConnectionStrength(3)
                         .build())
                 .build();
@@ -2202,6 +2192,7 @@ public class WifiPickerTrackerTest {
                         .Builder("My Phone", "Pixel 7")
                         .setDeviceType(NetworkProviderInfo.DEVICE_TYPE_PHONE)
                         .setBatteryPercentage(100)
+                        .setBatteryCharging(true)
                         .setConnectionStrength(3)
                         .build())
                 .build();
@@ -2234,6 +2225,7 @@ public class WifiPickerTrackerTest {
                         .Builder("My Phone", "Pixel 7")
                         .setDeviceType(NetworkProviderInfo.DEVICE_TYPE_PHONE)
                         .setBatteryPercentage(100)
+                        .setBatteryCharging(true)
                         .setConnectionStrength(3)
                         .build())
                 .build();
@@ -2274,6 +2266,7 @@ public class WifiPickerTrackerTest {
                         .Builder("My Phone", "Pixel 7")
                         .setDeviceType(NetworkProviderInfo.DEVICE_TYPE_PHONE)
                         .setBatteryPercentage(100)
+                        .setBatteryCharging(true)
                         .setConnectionStrength(3)
                         .build())
                 .build();
@@ -2285,6 +2278,7 @@ public class WifiPickerTrackerTest {
                         .Builder("My Work Phone", "Pixel 6")
                         .setDeviceType(NetworkProviderInfo.DEVICE_TYPE_PHONE)
                         .setBatteryPercentage(90)
+                        .setBatteryCharging(false)
                         .setConnectionStrength(2)
                         .build())
                 .build();
@@ -2329,6 +2323,7 @@ public class WifiPickerTrackerTest {
                         .Builder("My Phone", "Pixel 7")
                         .setDeviceType(NetworkProviderInfo.DEVICE_TYPE_PHONE)
                         .setBatteryPercentage(100)
+                        .setBatteryCharging(true)
                         .setConnectionStrength(3)
                         .build())
                 .setHostNetworkType(HotspotNetwork.NETWORK_TYPE_CELLULAR)
@@ -2361,6 +2356,7 @@ public class WifiPickerTrackerTest {
                         .Builder("My Phone", "Pixel 7")
                         .setDeviceType(NetworkProviderInfo.DEVICE_TYPE_PHONE)
                         .setBatteryPercentage(100)
+                        .setBatteryCharging(true)
                         .setConnectionStrength(3)
                         .build())
                 .setHostNetworkType(HotspotNetwork.NETWORK_TYPE_CELLULAR)
@@ -2397,6 +2393,7 @@ public class WifiPickerTrackerTest {
                         .Builder("My Phone", "Pixel 7")
                         .setDeviceType(NetworkProviderInfo.DEVICE_TYPE_PHONE)
                         .setBatteryPercentage(100)
+                        .setBatteryCharging(true)
                         .setConnectionStrength(3)
                         .build())
                 .setHostNetworkType(HotspotNetwork.NETWORK_TYPE_CELLULAR)
@@ -2442,6 +2439,7 @@ public class WifiPickerTrackerTest {
                         .Builder("My Phone", "Pixel 7")
                         .setDeviceType(NetworkProviderInfo.DEVICE_TYPE_PHONE)
                         .setBatteryPercentage(100)
+                        .setBatteryCharging(true)
                         .setConnectionStrength(3)
                         .build())
                 .setHostNetworkType(HotspotNetwork.NETWORK_TYPE_CELLULAR)
@@ -2490,6 +2488,7 @@ public class WifiPickerTrackerTest {
                         .Builder("My Phone", "Pixel 7")
                         .setDeviceType(NetworkProviderInfo.DEVICE_TYPE_PHONE)
                         .setBatteryPercentage(100)
+                        .setBatteryCharging(true)
                         .setConnectionStrength(3)
                         .build())
                 .setHostNetworkType(HotspotNetwork.NETWORK_TYPE_CELLULAR)
@@ -2501,6 +2500,7 @@ public class WifiPickerTrackerTest {
                         .Builder("My Work Phone", "Pixel 6")
                         .setDeviceType(NetworkProviderInfo.DEVICE_TYPE_PHONE)
                         .setBatteryPercentage(90)
+                        .setBatteryCharging(false)
                         .setConnectionStrength(2)
                         .build())
                 .setHostNetworkType(HotspotNetwork.NETWORK_TYPE_CELLULAR)
