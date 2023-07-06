@@ -214,6 +214,11 @@ public class WifiPickerTrackerTest {
                 .thenReturn(mMockSharedConnectivityManager);
         when(mMockContext.getString(anyInt())).thenReturn("");
         when(mInjector.isSharedConnectivityFeatureEnabled()).thenReturn(true);
+        when(mMockResources.getStringArray(R.array.wifitrackerlib_wifi_status)).thenReturn(
+                new String[]{"", "Scanning", "Connecting", "Authenticating", "Obtaining IP address",
+                        "Connected", "Suspended", "Disconnecting", "Unsuccessful", "Blocked",
+                        "Temporarily avoiding poor connection"});
+        when(mInjector.isSharedConnectivityFeatureEnabled()).thenReturn(true);
     }
 
     /**
