@@ -23,6 +23,7 @@ import static androidx.core.util.Preconditions.checkNotNull;
 import static com.android.wifitrackerlib.Utils.getNetworkPart;
 import static com.android.wifitrackerlib.Utils.getSingleSecurityTypeFromMultipleSecurityTypes;
 
+import android.content.Context;
 import android.net.ConnectivityDiagnosticsManager;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
@@ -227,6 +228,8 @@ public class WifiEntry {
 
     protected final boolean mForSavedNetworksPage;
 
+    @NonNull protected final WifiTrackerInjector mInjector;
+    @NonNull protected final Context mContext;
     protected final WifiManager mWifiManager;
 
     // Callback associated with this WifiEntry. Subclasses should call its methods appropriately.
@@ -258,10 +261,14 @@ public class WifiEntry {
     private boolean mIsPskSaeTransitionMode;
     private boolean mIsOweTransitionMode;
 
-    public WifiEntry(@NonNull Handler callbackHandler, @NonNull WifiManager wifiManager,
-            boolean forSavedNetworksPage) throws IllegalArgumentException {
+    public WifiEntry(@NonNull WifiTrackerInjector injector, @NonNull Handler callbackHandler,
+            @NonNull WifiManager wifiManager, boolean forSavedNetworksPage)
+            throws IllegalArgumentException {
+        checkNotNull(injector, "Cannot construct with null injector!");
         checkNotNull(callbackHandler, "Cannot construct with null handler!");
         checkNotNull(wifiManager, "Cannot construct with null WifiManager!");
+        mInjector = injector;
+        mContext = mInjector.getContext();
         mCallbackHandler = callbackHandler;
         mForSavedNetworksPage = forSavedNetworksPage;
         mWifiManager = wifiManager;
@@ -662,6 +669,20 @@ public class WifiEntry {
     /** Returns the string displayed for the Wi-Fi band */
     public String getBandString() {
         return "";
+    }
+
+    /**
+     * Returns the string displayed for Tx link speed.
+     */
+    public String getTxSpeedString() {
+        return Utils.getSpeedString(mContext, mWifiInfo, /* isTx */ true);
+    }
+
+    /**
+     * Returns the string displayed for Rx link speed.
+     */
+    public String getRxSpeedString() {
+        return Utils.getSpeedString(mContext, mWifiInfo, /* isTx */ false);
     }
 
     /** Returns whether subscription of the entry is expired */
