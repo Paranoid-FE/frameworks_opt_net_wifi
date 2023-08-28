@@ -760,6 +760,13 @@ public class WifiEntry {
     }
 
     /**
+     * Whether there are admin restrictions preventing connection to this network.
+     */
+    public boolean hasAdminRestrictions() {
+        return false;
+    }
+
+    /**
      * Sets the callback listener for WifiEntryCallback methods.
      * Subsequent calls will overwrite the previous listener.
      */
@@ -897,18 +904,21 @@ public class WifiEntry {
     /**
      * Updates this WifiEntry with the given primary WifiInfo/NetworkInfo if they match.
      * @param primaryWifiInfo Primary WifiInfo that has changed
-     * @param networkInfo NetworkInfo of the primary network
+     * @param networkInfo NetworkInfo of the primary network if available
      */
     synchronized void onPrimaryWifiInfoChanged(
-            @NonNull WifiInfo primaryWifiInfo, @NonNull NetworkInfo networkInfo) {
-        if (!connectionInfoMatches(primaryWifiInfo)) {
+            @Nullable WifiInfo primaryWifiInfo, @Nullable NetworkInfo networkInfo) {
+        if (primaryWifiInfo == null || !connectionInfoMatches(primaryWifiInfo)) {
             if (mNetworkInfo != null) {
                 mNetworkInfo = null;
                 notifyOnUpdated();
             }
             return;
         }
-        mNetworkInfo = networkInfo;
+        mWifiInfo = primaryWifiInfo;
+        if (networkInfo != null) {
+            mNetworkInfo = networkInfo;
+        }
         notifyOnUpdated();
     }
 

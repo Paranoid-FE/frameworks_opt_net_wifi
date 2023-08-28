@@ -195,10 +195,11 @@ public class WifiPickerTrackerTest {
                 });
         // A real NetworkCapabilities is needed here in order to create a copy (with location info)
         // using the NetworkCapabilities constructor in handleOnStart.
-        when(mMockConnectivityManager.getNetworkCapabilities(mMockNetwork))
-                .thenReturn(new NetworkCapabilities.Builder()
-                        .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
-                        .build());
+        NetworkCapabilities realNetCaps = new NetworkCapabilities.Builder()
+                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                .setTransportInfo(mock(WifiInfo.class))
+                .build();
+        when(mMockConnectivityManager.getNetworkCapabilities(mMockNetwork)).thenReturn(realNetCaps);
         when(mMockConnectivityManager.getLinkProperties(mMockNetwork))
                 .thenReturn(mMockLinkProperties);
         when(mMockSharedConnectivityManager.unregisterCallback(any())).thenReturn(true);
@@ -613,9 +614,44 @@ public class WifiPickerTrackerTest {
 
         // Network should be returned in getConnectedWifiEntry() even though it's not L3 connected.
         verify(mMockCallback, atLeastOnce()).onWifiEntriesChanged();
-//        assertThat(wifiPickerTracker.getWifiEntries()).isEmpty();
+        assertThat(wifiPickerTracker.getWifiEntries()).isEmpty();
         assertThat(wifiPickerTracker.getConnectedWifiEntry()).isEqualTo(entry);
         assertThat(entry.isPrimaryNetwork()).isTrue();
+    }
+
+    /**
+     * Tests that an L2 connected network request (i.e. from NETWORK_STATE_CHANGED) will correctly
+     * be returned in getConnectedEntry().
+     */
+    @Test
+    public void testGetConnectedEntry_networkRequestL2Connected_returnsConnectedEntry() {
+        final WifiPickerTracker wifiPickerTracker = createTestWifiPickerTracker();
+        final WifiConfiguration config = new WifiConfiguration();
+        config.SSID = "\"ssid\"";
+        config.networkId = 1;
+        config.fromWifiNetworkSpecifier = true;
+        when(mMockWifiManager.getPrivilegedConfiguredNetworks())
+                .thenReturn(Collections.singletonList(config));
+        wifiPickerTracker.onStart();
+        mTestLooper.dispatchAll();
+        verify(mMockContext).registerReceiver(
+                mBroadcastReceiverCaptor.capture(), any(), any(), any());
+        verify(mMockConnectivityManager).registerNetworkCallback(
+                any(), mNetworkCallbackCaptor.capture(), any());
+
+        // Simulate an L2 connected network that's still authenticating.
+        when(mMockWifiInfo.getNetworkId()).thenReturn(1);
+        when(mMockWifiInfo.getRssi()).thenReturn(-50);
+        NetworkInfo mockNetworkInfo = mock(NetworkInfo.class);
+        when(mockNetworkInfo.getDetailedState())
+                .thenReturn(NetworkInfo.DetailedState.AUTHENTICATING);
+        Intent networkStateChanged = new Intent(WifiManager.NETWORK_STATE_CHANGED_ACTION);
+        networkStateChanged.putExtra(WifiManager.EXTRA_NETWORK_INFO, mockNetworkInfo);
+        mBroadcastReceiverCaptor.getValue().onReceive(mMockContext, networkStateChanged);
+
+        // Network should be returned in getConnectedWifiEntry() even though it's not L3 connected.
+        verify(mMockCallback, atLeastOnce()).onWifiEntriesChanged();
+        assertThat(wifiPickerTracker.getConnectedWifiEntry()).isNotNull();
     }
 
     /**
@@ -759,6 +795,41 @@ public class WifiPickerTrackerTest {
         // Lose the default network
         mDefaultNetworkCallbackCaptor.getValue().onLost(mock(Network.class));
         assertThat(wifiPickerTracker.getConnectedWifiEntry().isDefaultNetwork()).isFalse();
+    }
+
+    /**
+     * Tests that a connected WifiEntry will become the default network if the network underlies
+     * the current default network.
+     */
+    @Test
+    public void testGetConnectedEntry_defaultNetworkHasUnderlyingWifi_becomesDefaultNetwork() {
+        final WifiPickerTracker wifiPickerTracker = createTestWifiPickerTracker();
+        final WifiConfiguration config = new WifiConfiguration();
+        config.SSID = "\"ssid\"";
+        config.networkId = 1;
+        when(mMockWifiManager.getPrivilegedConfiguredNetworks())
+                .thenReturn(Collections.singletonList(config));
+        when(mMockWifiManager.getScanResults()).thenReturn(Arrays.asList(
+                buildScanResult("ssid", "bssid", START_MILLIS)));
+        when(mMockWifiInfo.getNetworkId()).thenReturn(1);
+        when(mMockWifiInfo.getRssi()).thenReturn(-50);
+        wifiPickerTracker.onStart();
+        mTestLooper.dispatchAll();
+        verify(mMockConnectivityManager)
+                .registerNetworkCallback(any(), mNetworkCallbackCaptor.capture(), any());
+        verify(mMockConnectivityManager, atLeast(0)).registerSystemDefaultNetworkCallback(
+                mDefaultNetworkCallbackCaptor.capture(), any());
+        verify(mMockConnectivityManager, atLeast(0)).registerDefaultNetworkCallback(
+                mDefaultNetworkCallbackCaptor.capture(), any());
+
+        Network vpnNetwork = mock(Network.class);
+        NetworkCapabilities vpnCaps = new NetworkCapabilities.Builder()
+                .addCapability(NetworkCapabilities.TRANSPORT_VPN)
+                .setUnderlyingNetworks(List.of(mMockNetwork))
+                .build();
+        mDefaultNetworkCallbackCaptor.getValue().onCapabilitiesChanged(vpnNetwork, vpnCaps);
+
+        assertThat(wifiPickerTracker.getConnectedWifiEntry().isDefaultNetwork()).isTrue();
     }
 
     /**
@@ -2099,6 +2170,27 @@ public class WifiPickerTrackerTest {
         verify(mMockWifiManager).startScan();
     }
 
+    /**
+     * Tests that the BaseWifiTracker.Scanner does not scan if scanning was disabled.
+     */
+    @Test
+    public void testScanner_scanningDisabled_scannerDoesNotStart() {
+        final WifiPickerTracker wifiPickerTracker = createTestWifiPickerTracker();
+        wifiPickerTracker.disableScanning();
+        wifiPickerTracker.onStart();
+        mTestLooper.dispatchAll();
+        verify(mMockContext).registerReceiver(mBroadcastReceiverCaptor.capture(),
+                any(), any(), any());
+        mBroadcastReceiverCaptor.getValue().onReceive(mMockContext,
+                new Intent(WifiManager.WIFI_STATE_CHANGED_ACTION).putExtra(
+                        WifiManager.EXTRA_WIFI_STATE, WifiManager.WIFI_STATE_ENABLED));
+
+        ArgumentCaptor<WifiScanner.ScanListener> mScanListenerCaptor =
+                ArgumentCaptor.forClass(WifiScanner.ScanListener.class);
+        verify(mWifiScanner, never()).startScan(any(), mScanListenerCaptor.capture());
+        verify(mMockWifiManager, never()).startScan();
+    }
+
     @Test
     public void testScanner_startAfterOnStop_doesNotStart() {
         final WifiPickerTracker wifiPickerTracker = createTestWifiPickerTracker();
@@ -2368,9 +2460,7 @@ public class WifiPickerTrackerTest {
                 .setHostNetworkType(HotspotNetwork.NETWORK_TYPE_CELLULAR)
                 .setNetworkName("Google Fi")
                 .setHotspotSsid("Instant Hotspot abcde")
-                .setHotspotBssid("0a:0b:0c:0d:0e:0f")
                 .addHotspotSecurityType(SECURITY_TYPE_PSK)
-                .addHotspotSecurityType(SECURITY_TYPE_SAE)
                 .build();
         when(mMockSharedConnectivityManager.getHotspotNetworks()).thenReturn(
                 Collections.singletonList(testHotspotNetwork));
@@ -2405,9 +2495,7 @@ public class WifiPickerTrackerTest {
                 .setHostNetworkType(HotspotNetwork.NETWORK_TYPE_CELLULAR)
                 .setNetworkName("Google Fi")
                 .setHotspotSsid("Instant Hotspot abcde")
-                .setHotspotBssid("0a:0b:0c:0d:0e:0f")
                 .addHotspotSecurityType(SECURITY_TYPE_PSK)
-                .addHotspotSecurityType(SECURITY_TYPE_SAE)
                 .build();
         when(mMockSharedConnectivityManager.getHotspotNetworks()).thenReturn(
                 Collections.singletonList(testHotspotNetwork));
@@ -2451,22 +2539,19 @@ public class WifiPickerTrackerTest {
                 .setHostNetworkType(HotspotNetwork.NETWORK_TYPE_CELLULAR)
                 .setNetworkName("Google Fi")
                 .setHotspotSsid("Instant Hotspot abcde")
-                .setHotspotBssid("0a:0b:0c:0d:0e:0f")
                 .addHotspotSecurityType(SECURITY_TYPE_PSK)
-                .addHotspotSecurityType(SECURITY_TYPE_SAE)
                 .build();
         when(mMockSharedConnectivityManager.getHotspotNetworks()).thenReturn(
                 Collections.singletonList(testHotspotNetwork));
         final WifiConfiguration config = new WifiConfiguration();
         config.SSID = "\"Instant Hotspot abcde\"";
-        config.BSSID = "0a:0b:0c:0d:0e:0f";
         config.networkId = 1;
         config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK);
         when(mMockWifiManager.getPrivilegedConfiguredNetworks())
                 .thenReturn(Collections.singletonList(config));
         when(mMockWifiInfo.getNetworkId()).thenReturn(1);
         when(mMockWifiInfo.getRssi()).thenReturn(GOOD_RSSI);
-        when(mMockWifiInfo.getBSSID()).thenReturn("0a:0b:0c:0d:0e:0f");
+        when(mMockWifiInfo.getSSID()).thenReturn("Instant Hotspot abcde");
         when(mMockWifiInfo.getCurrentSecurityType()).thenReturn(SECURITY_TYPE_PSK);
         when(mMockWifiManager.getScanResults()).thenReturn(Collections.singletonList(
                 buildScanResult("Instant Hotspot abcde", "0a:0b:0c:0d:0e:0f", START_MILLIS,

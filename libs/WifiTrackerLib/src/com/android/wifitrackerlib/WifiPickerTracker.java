@@ -379,13 +379,24 @@ public class WifiPickerTracker extends BaseWifiTracker {
     protected void handleNetworkStateChangedAction(@NonNull Intent intent) {
         WifiInfo primaryWifiInfo = mWifiManager.getConnectionInfo();
         NetworkInfo networkInfo = intent.getParcelableExtra(WifiManager.EXTRA_NETWORK_INFO);
-        if (primaryWifiInfo == null || networkInfo == null) {
-            return;
+        if (primaryWifiInfo != null) {
+            conditionallyCreateConnectedWifiEntry(primaryWifiInfo);
         }
         for (WifiEntry entry : getAllWifiEntries()) {
             entry.onPrimaryWifiInfoChanged(primaryWifiInfo, networkInfo);
         }
         updateWifiEntries();
+    }
+
+    @WorkerThread
+    @Override
+    protected void handleRssiChangedAction(@NonNull Intent intent) {
+        // RSSI is available via the new WifiInfo object, which is used to populate the RSSI in the
+        // verbose summary.
+        WifiInfo primaryWifiInfo = mWifiManager.getConnectionInfo();
+        for (WifiEntry entry : getAllWifiEntries()) {
+            entry.onPrimaryWifiInfoChanged(primaryWifiInfo, null);
+        }
     }
 
     @WorkerThread
@@ -1140,14 +1151,18 @@ public class WifiPickerTracker extends BaseWifiTracker {
             // thread times out waiting for driver restart and returns an empty list of networks.
             updateWifiConfigurations(mWifiManager.getPrivilegedConfiguredNetworks());
         }
+        // Create a WifiEntry for the current connection if there are no scan results yet.
+        conditionallyCreateConnectedWifiEntry(Utils.getWifiInfo(capabilities));
         for (WifiEntry entry : getAllWifiEntries()) {
             entry.onNetworkCapabilitiesChanged(network, capabilities);
         }
-        // Create a WifiEntry for the current connection if there are no scan results yet.
-        conditionallyCreateConnectedStandardWifiEntry(network, capabilities);
-        conditionallyCreateConnectedSuggestedWifiEntry(network, capabilities);
-        conditionallyCreateConnectedPasspointWifiEntry(network, capabilities);
-        conditionallyCreateConnectedNetworkRequestEntry(network, capabilities);
+    }
+
+    private void conditionallyCreateConnectedWifiEntry(@NonNull WifiInfo wifiInfo) {
+        conditionallyCreateConnectedStandardWifiEntry(wifiInfo);
+        conditionallyCreateConnectedSuggestedWifiEntry(wifiInfo);
+        conditionallyCreateConnectedPasspointWifiEntry(wifiInfo);
+        conditionallyCreateConnectedNetworkRequestEntry(wifiInfo);
     }
 
     /**
@@ -1155,11 +1170,9 @@ public class WifiPickerTracker extends BaseWifiTracker {
      * created if there is no existing entry, or the existing entry doesn't match WifiInfo.
      */
     @WorkerThread
-    private void conditionallyCreateConnectedNetworkRequestEntry(
-            @NonNull Network network, @NonNull NetworkCapabilities capabilities) {
+    private void conditionallyCreateConnectedNetworkRequestEntry(@NonNull WifiInfo wifiInfo) {
         final List<WifiConfiguration> matchingConfigs = new ArrayList<>();
 
-        WifiInfo wifiInfo = Utils.getWifiInfo(capabilities);
         if (wifiInfo != null) {
             for (int i = 0; i < mNetworkRequestConfigCache.size(); i++) {
                 final List<WifiConfiguration> configs = mNetworkRequestConfigCache.valueAt(i);
@@ -1182,7 +1195,6 @@ public class WifiPickerTracker extends BaseWifiTracker {
             mNetworkRequestEntry.updateConfig(matchingConfigs);
             updateNetworkRequestEntryScans(mScanResultUpdater.getScanResults());
         }
-        mNetworkRequestEntry.onNetworkCapabilitiesChanged(network, capabilities);
     }
 
     /**
@@ -1190,9 +1202,7 @@ public class WifiPickerTracker extends BaseWifiTracker {
      * network yet, create and cache a new StandardWifiEntry for it.
      */
     @WorkerThread
-    private void conditionallyCreateConnectedStandardWifiEntry(
-            @NonNull Network network, @NonNull NetworkCapabilities capabilities) {
-        WifiInfo wifiInfo = Utils.getWifiInfo(capabilities);
+    private void conditionallyCreateConnectedStandardWifiEntry(@NonNull WifiInfo wifiInfo) {
         if (wifiInfo == null || wifiInfo.isPasspointAp() || wifiInfo.isOsuAp()) {
             return;
         }
@@ -1216,7 +1226,6 @@ public class WifiPickerTracker extends BaseWifiTracker {
             final StandardWifiEntry connectedEntry =
                     new StandardWifiEntry(mInjector, mMainHandler, entryKey, configs,
                             null, mWifiManager, false /* forSavedNetworksPage */);
-            connectedEntry.onNetworkCapabilitiesChanged(network, capabilities);
             mStandardWifiEntryCache.add(connectedEntry);
             return;
         }
@@ -1227,9 +1236,7 @@ public class WifiPickerTracker extends BaseWifiTracker {
      * yet, create and cache a new StandardWifiEntry for it.
      */
     @WorkerThread
-    private void conditionallyCreateConnectedSuggestedWifiEntry(
-            @NonNull Network network, @NonNull NetworkCapabilities capabilities) {
-        WifiInfo wifiInfo = Utils.getWifiInfo(capabilities);
+    private void conditionallyCreateConnectedSuggestedWifiEntry(@NonNull WifiInfo wifiInfo) {
         if (wifiInfo == null || wifiInfo.isPasspointAp() || wifiInfo.isOsuAp()) {
             return;
         }
@@ -1248,7 +1255,6 @@ public class WifiPickerTracker extends BaseWifiTracker {
             final StandardWifiEntry connectedEntry =
                     new StandardWifiEntry(mInjector, mMainHandler, entryKey, configs,
                             null, mWifiManager, false /* forSavedNetworksPage */);
-            connectedEntry.onNetworkCapabilitiesChanged(network, capabilities);
             mSuggestedWifiEntryCache.add(connectedEntry);
             return;
         }
@@ -1259,9 +1265,7 @@ public class WifiPickerTracker extends BaseWifiTracker {
      * yet, create and cache a new StandardWifiEntry for it.
      */
     @WorkerThread
-    private void conditionallyCreateConnectedPasspointWifiEntry(
-            @NonNull Network network, @NonNull NetworkCapabilities capabilities) {
-        WifiInfo wifiInfo = Utils.getWifiInfo(capabilities);
+    private void conditionallyCreateConnectedPasspointWifiEntry(@NonNull WifiInfo wifiInfo) {
         if (wifiInfo == null || !wifiInfo.isPasspointAp()) {
             return;
         }
@@ -1288,7 +1292,6 @@ public class WifiPickerTracker extends BaseWifiTracker {
                     cachedWifiConfig, mWifiManager,
                     false /* forSavedNetworksPage */);
         }
-        connectedEntry.onNetworkCapabilitiesChanged(network, capabilities);
         mPasspointWifiEntryCache.put(connectedEntry.getKey(), connectedEntry);
     }
 
