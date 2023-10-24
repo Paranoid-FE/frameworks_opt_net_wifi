@@ -36,6 +36,7 @@ import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Handler;
+import android.text.TextUtils;
 
 import androidx.annotation.AnyThread;
 import androidx.annotation.IntDef;
@@ -213,6 +214,8 @@ public class WifiEntry {
                             entry.getConnectedState() != CONNECTED_STATE_CONNECTED)
                     .thenComparing((WifiEntry entry) -> !(entry instanceof KnownNetworkEntry))
                     .thenComparing((WifiEntry entry) -> !(entry instanceof HotspotNetworkEntry))
+                    .thenComparing((WifiEntry entry) -> (entry instanceof HotspotNetworkEntry)
+                            ? -((HotspotNetworkEntry) entry).getUpstreamConnectionStrength() : 0)
                     .thenComparing((WifiEntry entry) -> !entry.canConnect())
                     .thenComparing((WifiEntry entry) -> !entry.isSubscription())
                     .thenComparing((WifiEntry entry) -> !entry.isSaved())
@@ -915,10 +918,10 @@ public class WifiEntry {
             }
             return;
         }
-        mWifiInfo = primaryWifiInfo;
         if (networkInfo != null) {
             mNetworkInfo = networkInfo;
         }
+        updateWifiInfo(primaryWifiInfo);
         notifyOnUpdated();
     }
 
@@ -952,9 +955,20 @@ public class WifiEntry {
 
         // Connection info matches, so the Network/NetworkCapabilities represent this network
         // and the network is currently connecting or connected.
-        mWifiInfo = wifiInfo;
         mNetwork = network;
         mNetworkCapabilities = capabilities;
+        updateWifiInfo(wifiInfo);
+        notifyOnUpdated();
+    }
+
+    private synchronized void updateWifiInfo(WifiInfo wifiInfo) {
+        if (wifiInfo == null) {
+            mWifiInfo = null;
+            mConnectedInfo = null;
+            updateSecurityTypes();
+            return;
+        }
+        mWifiInfo = wifiInfo;
         final int wifiInfoRssi = mWifiInfo.getRssi();
         if (wifiInfoRssi != INVALID_RSSI) {
             mLevel = mWifiManager.calculateSignalLevel(wifiInfoRssi);
@@ -979,7 +993,6 @@ public class WifiEntry {
             mConnectedInfo.wifiStandard = mWifiInfo.getWifiStandard();
         }
         updateSecurityTypes();
-        notifyOnUpdated();
     }
 
     /**
@@ -990,12 +1003,17 @@ public class WifiEntry {
         if (!network.equals(mNetwork)) {
             return;
         }
-
         // Network matches, so this network is disconnected.
-        mWifiInfo = null;
+        clearConnectionInfo();
+    }
+
+    /**
+     * Clears any connection info from this entry.
+     */
+    synchronized void clearConnectionInfo() {
+        updateWifiInfo(null);
         mNetworkInfo = null;
         mNetworkCapabilities = null;
-        mConnectedInfo = null;
         mConnectivityReport = null;
         mIsDefaultNetwork = false;
         if (mCalledDisconnect) {
@@ -1008,7 +1026,6 @@ public class WifiEntry {
                 }
             });
         }
-        updateSecurityTypes();
         notifyOnUpdated();
     }
 
@@ -1176,36 +1193,62 @@ public class WifiEntry {
 
     @Override
     public String toString() {
-        return new StringBuilder()
-                .append(getKey())
-                .append(",title:")
-                .append(getTitle())
-                .append(",summary:")
-                .append(getSummary())
-                .append(",isSaved:")
-                .append(isSaved())
-                .append(",isSubscription:")
-                .append(isSubscription())
-                .append(",isSuggestion:")
-                .append(isSuggestion())
-                .append(",level:")
-                .append(getLevel())
-                .append(shouldShowXLevelIcon() ? "X" : "")
-                .append(",security:")
-                .append(getSecurityTypes())
-                .append(",standard:")
-                .append(getWifiStandard())
-                .append(",connected:")
-                .append(getConnectedState() == CONNECTED_STATE_CONNECTED ? "true" : "false")
-                .append(",connectedInfo:")
-                .append(getConnectedInfo())
-                .append(",hasInternet:")
-                .append(hasInternetAccess())
-                .append(",isDefault:")
-                .append(mIsDefaultNetwork)
-                .append(",isPrimary:")
-                .append(isPrimaryNetwork())
-                .toString();
+        StringJoiner sj = new StringJoiner("][", "[", "]");
+        sj.add(this.getClass().getSimpleName());
+        sj.add(getTitle());
+        sj.add(getSummary());
+        sj.add("Level:" + getLevel() + (shouldShowXLevelIcon() ? "!" : ""));
+        String security = getSecurityString(true);
+        if (!TextUtils.isEmpty(security)) {
+            sj.add(security);
+        }
+        sj.add("Standard:" + getWifiStandard());
+        int connectedState = getConnectedState();
+        if (connectedState == CONNECTED_STATE_CONNECTED) {
+            sj.add("Connected");
+        } else if (connectedState == CONNECTED_STATE_CONNECTING) {
+            sj.add("Connecting...");
+        }
+        if (hasInternetAccess()) {
+            sj.add("Internet");
+        }
+        if (isDefaultNetwork()) {
+            sj.add("Default");
+        }
+        if (isPrimaryNetwork()) {
+            sj.add("Primary");
+        }
+        if (isLowQuality()) {
+            sj.add("LowQuality");
+        }
+        if (isSaved()) {
+            sj.add("Saved");
+        }
+        if (isSubscription()) {
+            sj.add("Subscription");
+        }
+        if (isSuggestion()) {
+            sj.add("Suggestion");
+        }
+        if (isMetered()) {
+            sj.add("Metered");
+        }
+        if ((isSaved() || isSuggestion() || isSubscription()) && !isAutoJoinEnabled()) {
+            sj.add("AutoJoinDisabled");
+        }
+        if (isExpired()) {
+            sj.add("Expired");
+        }
+        if (canSignIn()) {
+            sj.add("SignIn");
+        }
+        if (shouldEditBeforeConnect()) {
+            sj.add("EditBeforeConnect");
+        }
+        if (hasAdminRestrictions()) {
+            sj.add("AdminRestricted");
+        }
+        return sj.toString();
     }
 
     /**
