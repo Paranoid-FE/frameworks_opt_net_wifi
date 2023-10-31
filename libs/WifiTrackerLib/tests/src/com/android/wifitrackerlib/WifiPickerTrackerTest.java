@@ -533,6 +533,37 @@ public class WifiPickerTrackerTest {
     }
 
     /**
+     * Tests that a CONFIGURED_NETWORKS_CHANGED broadcast does not create WifiEntries based on
+     * cached scan results if Wi-Fi is disabled.
+     */
+    @Test
+    public void testGetWifiEntries_configuredNetworksChangedWifiDisabled_doesntUpdateEntries() {
+        final WifiPickerTracker wifiPickerTracker = createTestWifiPickerTracker();
+        wifiPickerTracker.onStart();
+        mTestLooper.dispatchAll();
+        verify(mMockContext).registerReceiver(mBroadcastReceiverCaptor.capture(),
+                any(), any(), any());
+        // Start off with Wi-Fi enabled
+        when(mMockWifiManager.getScanResults()).thenReturn(Arrays.asList(
+                buildScanResult("ssid", "bssid", START_MILLIS)));
+        mBroadcastReceiverCaptor.getValue().onReceive(mMockContext,
+                new Intent(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
+        assertThat(wifiPickerTracker.getWifiEntries()).isNotEmpty();
+
+        // Disable Wi-Fi and verify wifi entries is empty
+        when(mMockWifiManager.getWifiState()).thenReturn(WifiManager.WIFI_STATE_DISABLED);
+        mBroadcastReceiverCaptor.getValue().onReceive(mMockContext,
+                new Intent(WifiManager.WIFI_STATE_CHANGED_ACTION).putExtra(
+                        WifiManager.EXTRA_WIFI_STATE, WifiManager.WIFI_STATE_DISABLED));
+        assertThat(wifiPickerTracker.getWifiEntries()).isEmpty();
+
+        // Receive CONFIGURED_NETWORKS_CHANGED, verify wifi entries is still empty
+        mBroadcastReceiverCaptor.getValue().onReceive(mMockContext,
+                new Intent(WifiManager.CONFIGURED_NETWORKS_CHANGED_ACTION));
+        assertThat(wifiPickerTracker.getWifiEntries()).isEmpty();
+    }
+
+    /**
      * Tests that getConnectedEntry() returns the connected WifiEntry if we start already connected
      * to a network.
      */
@@ -885,6 +916,8 @@ public class WifiPickerTrackerTest {
         final WifiConfiguration config = new WifiConfiguration();
         config.SSID = "\"ssid\"";
         config.networkId = 1;
+        when(mMockWifiManager.getCurrentNetwork()).thenReturn(null);
+        when(mMockWifiManager.getConnectionInfo()).thenReturn(null);
         when(mMockWifiManager.getPrivilegedConfiguredNetworks())
                 .thenReturn(Collections.singletonList(config));
         when(mMockWifiManager.getScanResults()).thenReturn(Arrays.asList(
@@ -906,6 +939,15 @@ public class WifiPickerTrackerTest {
                 .setUnderlyingNetworks(List.of(mMockNetwork))
                 .build();
         mDefaultNetworkCallbackCaptor.getValue().onCapabilitiesChanged(vpnNetwork, vpnCaps);
+        mNetworkCallbackCaptor.getValue().onCapabilitiesChanged(
+                mMockNetwork, mMockNetworkCapabilities);
+
+        assertThat(wifiPickerTracker.getConnectedWifiEntry().isDefaultNetwork()).isTrue();
+
+        // Losing the network and regaining it should not reset it being the default.
+        mNetworkCallbackCaptor.getValue().onLost(mMockNetwork);
+        mNetworkCallbackCaptor.getValue().onCapabilitiesChanged(
+                mMockNetwork, mMockNetworkCapabilities);
 
         assertThat(wifiPickerTracker.getConnectedWifiEntry().isDefaultNetwork()).isTrue();
     }
