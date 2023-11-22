@@ -1260,6 +1260,13 @@ public class WifiEntry {
         void onExecute();
     }
 
+    /**
+     * Whether this WifiEntry is using a verbose summary.
+     */
+    public boolean isVerboseSummaryEnabled() {
+        return mInjector.isVerboseSummaryEnabled();
+    }
+
     protected void updateTransitionModeCapa(ScanResult scanResult) {
         mIsPskSaeTransitionMode = scanResult.capabilities.contains("PSK")
                                       && scanResult.capabilities.contains("SAE");
