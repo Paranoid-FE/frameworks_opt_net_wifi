@@ -2309,6 +2309,7 @@ public class WifiPickerTrackerTest {
                 ArgumentCaptor.forClass(WifiScanner.ScanListener.class);
         verify(mWifiScanner, never()).startScan(any(), mScanListenerCaptor.capture());
         verify(mMockWifiManager, never()).startScan();
+        verify(mInjector).disableVerboseLogging();
     }
 
     @Test
