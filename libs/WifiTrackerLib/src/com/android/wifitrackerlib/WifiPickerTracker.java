@@ -60,6 +60,7 @@ import android.util.SparseArray;
 
 import androidx.annotation.AnyThread;
 import androidx.annotation.GuardedBy;
+import androidx.annotation.IntDef;
 import androidx.annotation.MainThread;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -68,6 +69,8 @@ import androidx.annotation.WorkerThread;
 import androidx.core.os.BuildCompat;
 import androidx.lifecycle.Lifecycle;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -91,6 +94,9 @@ import java.util.stream.Collectors;
 public class WifiPickerTracker extends BaseWifiTracker {
 
     private static final String TAG = "WifiPickerTracker";
+
+    private static final String EXTRA_KEY_CONNECTION_STATUS_CONNECTED =
+            "connection_status_connected";
 
     private final WifiPickerTrackerCallback mListener;
 
@@ -344,7 +350,7 @@ public class WifiPickerTracker extends BaseWifiTracker {
         checkNotNull(intent, "Intent cannot be null!");
         conditionallyUpdateScanResults(
                 intent.getBooleanExtra(WifiManager.EXTRA_RESULTS_UPDATED, true));
-        updateWifiEntries();
+        updateWifiEntries(WIFI_ENTRIES_CHANGED_REASON_SCAN_RESULTS);
     }
 
     @WorkerThread
@@ -476,15 +482,25 @@ public class WifiPickerTracker extends BaseWifiTracker {
             updateWifiEntries();
         }
     }
-    @TargetApi(VERSION_CODES.UPSIDE_DOWN_CAKE)
-    @WorkerThread
-    protected void handleHotspotNetworkConnectionStatusChanged(
-            @NonNull HotspotNetworkConnectionStatus status) {
-        mHotspotNetworkEntryCache.stream().filter(
-                entry -> entry.getHotspotNetworkEntryKey().getDeviceId()
-                        == status.getHotspotNetwork().getDeviceId()).forEach(
-                                entry -> entry.onConnectionStatusChanged(status.getStatus()));
-    }
+
+  @TargetApi(VERSION_CODES.UPSIDE_DOWN_CAKE)
+  @WorkerThread
+  protected void handleHotspotNetworkConnectionStatusChanged(
+      @NonNull HotspotNetworkConnectionStatus status) {
+    mHotspotNetworkEntryCache.stream()
+        .filter(
+            entry ->
+                entry.getHotspotNetworkEntryKey().getDeviceId()
+                    == status.getHotspotNetwork().getDeviceId())
+        .forEach(
+            entry -> {
+              if (status.getExtras().getBoolean(EXTRA_KEY_CONNECTION_STATUS_CONNECTED, false)) {
+                entry.onConnectionStatusChanged(HotspotNetworkEntry.CONNECTION_STATUS_CONNECTED);
+              } else {
+                entry.onConnectionStatusChanged(status.getStatus());
+              }
+            });
+  }
 
     @TargetApi(VERSION_CODES.UPSIDE_DOWN_CAKE)
     @WorkerThread
@@ -492,7 +508,7 @@ public class WifiPickerTracker extends BaseWifiTracker {
     protected void handleKnownNetworkConnectionStatusChanged(
             @NonNull KnownNetworkConnectionStatus status) {
         final ScanResultKey key = new ScanResultKey(status.getKnownNetwork().getSsid(),
-                status.getKnownNetwork().getSecurityTypes().stream().toList());
+                new ArrayList<>(status.getKnownNetwork().getSecurityTypes()));
         mKnownNetworkEntryCache.stream().filter(
                 entry -> entry.getStandardWifiEntryKey().getScanResultKey().equals(key)).forEach(
                         entry -> entry.onConnectionStatusChanged(status.getStatus()));
@@ -504,11 +520,22 @@ public class WifiPickerTracker extends BaseWifiTracker {
     protected void handleServiceConnected() {
         if (mInjector.isSharedConnectivityFeatureEnabled()) {
             mKnownNetworkDataCache.clear();
-            mKnownNetworkDataCache.addAll(mSharedConnectivityManager.getKnownNetworks());
+            List<KnownNetwork> knownNetworks = mSharedConnectivityManager.getKnownNetworks();
+            if (knownNetworks != null) {
+                mKnownNetworkDataCache.addAll(knownNetworks);
+            }
             mHotspotNetworkDataCache.clear();
-            mHotspotNetworkDataCache.addAll(mSharedConnectivityManager.getHotspotNetworks());
+            List<HotspotNetwork> hotspotNetworks = mSharedConnectivityManager.getHotspotNetworks();
+            if (hotspotNetworks != null) {
+                mHotspotNetworkDataCache.addAll(hotspotNetworks);
+            }
             updateKnownNetworkEntryScans(mScanResultUpdater.getScanResults());
             updateHotspotNetworkEntries();
+            HotspotNetworkConnectionStatus status =
+                    mSharedConnectivityManager.getHotspotNetworkConnectionStatus();
+            if (status != null) {
+                handleHotspotNetworkConnectionStatusChanged(status);
+            }
             updateWifiEntries();
         }
     }
@@ -526,11 +553,7 @@ public class WifiPickerTracker extends BaseWifiTracker {
         }
     }
 
-    /**
-     * Update the list returned by getWifiEntries() with the current states of the entry caches.
-     */
-    @WorkerThread
-    protected void updateWifiEntries() {
+    protected void updateWifiEntries(@WifiEntriesChangedReason int reason) {
         synchronized (mLock) {
             mActiveWifiEntries.clear();
             mActiveWifiEntries.addAll(mStandardWifiEntryCache);
@@ -639,6 +662,7 @@ public class WifiPickerTracker extends BaseWifiTracker {
             }
             Collections.sort(mWifiEntries, WifiEntry.WIFI_PICKER_COMPARATOR);
             if (isVerboseLoggingEnabled()) {
+                Log.v(TAG, "onWifiEntriesChanged: reason=" + reason);
                 StringJoiner entryLog = new StringJoiner("\n");
                 int numEntries = mActiveWifiEntries.size() + mWifiEntries.size();
                 int index = 1;
@@ -654,7 +678,16 @@ public class WifiPickerTracker extends BaseWifiTracker {
                 Log.v(TAG, "MergedCarrierEntry: " + mMergedCarrierEntry);
             }
         }
-        notifyOnWifiEntriesChanged();
+        notifyOnWifiEntriesChanged(reason);
+    }
+
+
+    /**
+     * Update the list returned by getWifiEntries() with the current states of the entry caches.
+     */
+    @WorkerThread
+    protected void updateWifiEntries() {
+        updateWifiEntries(WIFI_ENTRIES_CHANGED_REASON_GENERAL);
     }
 
     /**
@@ -693,7 +726,7 @@ public class WifiPickerTracker extends BaseWifiTracker {
                 }
             }
         }
-        notifyOnWifiEntriesChanged();
+        notifyOnWifiEntriesChanged(WIFI_ENTRIES_CHANGED_REASON_GENERAL);
     }
 
     /**
@@ -1327,9 +1360,9 @@ public class WifiPickerTracker extends BaseWifiTracker {
      * Posts onWifiEntryChanged callback on the main thread.
      */
     @WorkerThread
-    private void notifyOnWifiEntriesChanged() {
+    private void notifyOnWifiEntriesChanged(@WifiEntriesChangedReason int reason) {
         if (mListener != null) {
-            mMainHandler.post(mListener::onWifiEntriesChanged);
+            mMainHandler.post(() -> mListener.onWifiEntriesChanged(reason));
         }
     }
 
@@ -1353,6 +1386,17 @@ public class WifiPickerTracker extends BaseWifiTracker {
         }
     }
 
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef(value = {
+            WIFI_ENTRIES_CHANGED_REASON_GENERAL,
+            WIFI_ENTRIES_CHANGED_REASON_SCAN_RESULTS,
+    })
+
+    public @interface WifiEntriesChangedReason {}
+
+    public static final int WIFI_ENTRIES_CHANGED_REASON_GENERAL = 0;
+    public static final int WIFI_ENTRIES_CHANGED_REASON_SCAN_RESULTS = 1;
+
     /**
      * Listener for changes to the list of visible WifiEntries as well as the number of saved
      * networks and subscriptions.
@@ -1367,7 +1411,20 @@ public class WifiPickerTracker extends BaseWifiTracker {
          *      {@link #getMergedCarrierEntry()}
          */
         @MainThread
-        void onWifiEntriesChanged();
+        default void onWifiEntriesChanged() {
+            // Do nothing
+        }
+
+        /**
+         * Called when there are changes to
+         *      {@link #getConnectedWifiEntry()}
+         *      {@link #getWifiEntries()}
+         *      {@link #getMergedCarrierEntry()}
+         */
+        @MainThread
+        default void onWifiEntriesChanged(@WifiEntriesChangedReason int reason) {
+            onWifiEntriesChanged();
+        }
 
         /**
          * Called when there are changes to

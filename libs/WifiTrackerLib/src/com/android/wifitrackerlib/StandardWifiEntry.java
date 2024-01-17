@@ -43,7 +43,7 @@ import static com.android.wifitrackerlib.Utils.getMeteredDescription;
 import static com.android.wifitrackerlib.Utils.getSecurityTypesFromScanResult;
 import static com.android.wifitrackerlib.Utils.getSecurityTypesFromWifiConfiguration;
 import static com.android.wifitrackerlib.Utils.getSingleSecurityTypeFromMultipleSecurityTypes;
-import static com.android.wifitrackerlib.Utils.getVerboseLoggingDescription;
+import static com.android.wifitrackerlib.Utils.getVerboseSummary;
 
 import android.annotation.SuppressLint;
 import android.app.admin.DevicePolicyManager;
@@ -229,10 +229,10 @@ public class StandardWifiEntry extends WifiEntry {
             sj.add(meteredDescription);
         }
 
-        if (!concise) {
-            final String verboseLoggingDescription = getVerboseLoggingDescription(this);
-            if (!TextUtils.isEmpty(verboseLoggingDescription)) {
-                sj.add(verboseLoggingDescription);
+        if (!concise && isVerboseSummaryEnabled()) {
+            final String verboseSummary = getVerboseSummary(this);
+            if (!TextUtils.isEmpty(verboseSummary)) {
+                sj.add(verboseSummary);
             }
         }
 
@@ -251,6 +251,7 @@ public class StandardWifiEntry extends WifiEntry {
 
     @Override
     @Nullable
+    @SuppressLint("HardwareIds")
     public synchronized String getMacAddress() {
         if (mWifiInfo != null) {
             final String wifiInfoMac = mWifiInfo.getMacAddress();
@@ -284,6 +285,14 @@ public class StandardWifiEntry extends WifiEntry {
     @Override
     public synchronized boolean isSuggestion() {
         return mTargetWifiConfig != null && mTargetWifiConfig.fromWifiNetworkSuggestion;
+    }
+
+    @Override
+    public boolean needsWifiConfiguration() {
+        List<Integer> securityTypes = getSecurityTypes();
+        return !isSaved() && !isSuggestion()
+                && !securityTypes.contains(SECURITY_TYPE_OPEN)
+                && !securityTypes.contains(SECURITY_TYPE_OWE);
     }
 
     @Override

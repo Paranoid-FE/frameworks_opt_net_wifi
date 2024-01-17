@@ -57,7 +57,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.stream.Collectors;
@@ -375,7 +374,7 @@ public class WifiEntry {
      * currently being used to provide internet connection).
      */
     public boolean isDefaultNetwork() {
-        return Objects.equals(mNetwork, mDefaultNetwork);
+        return mNetwork != null && mNetwork.equals(mDefaultNetwork);
     }
 
     /**
@@ -406,6 +405,14 @@ public class WifiEntry {
         return mNetworkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                 && mDefaultNetworkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
                 && !mDefaultNetworkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN);
+    }
+
+    /**
+     * Returns whether this network should display its SSID separately from the title
+     * (e.g. the Network Details page), for networks whose display titles differ from the SSID.
+     */
+    public boolean shouldShowSsid() {
+        return false;
     }
 
     /**
@@ -489,6 +496,14 @@ public class WifiEntry {
      * Indicates whether or not an entry is for a subscription.
      */
     public boolean isSubscription() {
+        return false;
+    }
+
+    /**
+     * Returns whether this entry needs to be configured with a new WifiConfiguration before
+     * connection.
+     */
+    public boolean needsWifiConfiguration() {
         return false;
     }
 
@@ -1258,6 +1273,13 @@ public class WifiEntry {
          * Execute the action of managing subscription.
          */
         void onExecute();
+    }
+
+    /**
+     * Whether this WifiEntry is using a verbose summary.
+     */
+    public boolean isVerboseSummaryEnabled() {
+        return mInjector.isVerboseSummaryEnabled();
     }
 
     protected void updateTransitionModeCapa(ScanResult scanResult) {

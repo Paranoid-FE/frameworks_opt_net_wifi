@@ -42,7 +42,6 @@ import android.net.wifi.sharedconnectivity.app.KnownNetworkConnectionStatus;
 import android.net.wifi.sharedconnectivity.app.SharedConnectivityClientCallback;
 import android.net.wifi.sharedconnectivity.app.SharedConnectivityManager;
 import android.net.wifi.sharedconnectivity.app.SharedConnectivitySettingsState;
-import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.telephony.SubscriptionManager;
@@ -92,10 +91,8 @@ import java.util.concurrent.Executor;
 public class BaseWifiTracker {
     private final String mTag;
 
-    private static boolean sVerboseLogging;
-
-    public static boolean isVerboseLoggingEnabled() {
-        return BaseWifiTracker.sVerboseLogging;
+    public boolean isVerboseLoggingEnabled() {
+        return mInjector.isVerboseLoggingEnabled();
     }
 
     private int mWifiState = WifiManager.WIFI_STATE_DISABLED;
@@ -347,9 +344,6 @@ public class BaseWifiTracker {
                 BaseWifiTracker.this.onDestroy();
             }
         };
-        if (lifecycle != null) {
-            lifecycle.addObserver(mLifecycleObserver);
-        }
         mContext = context;
         mWifiManager = wifiManager;
         mConnectivityManager = connectivityManager;
@@ -369,12 +363,9 @@ public class BaseWifiTracker {
         mScanResultUpdater = new ScanResultUpdater(clock,
                 maxScanAgeMillis + scanIntervalMillis);
         mScanner = new BaseWifiTracker.Scanner(workerHandler.getLooper());
-        if (mContext.getResources().getBoolean(
-                R.bool.wifitrackerlib_enable_verbose_logging_for_userdebug)
-                && Build.TYPE.equals("userdebug")) {
-            sVerboseLogging = true;
-        } else {
-            sVerboseLogging = mWifiManager.isVerboseLoggingEnabled();
+
+        if (lifecycle != null) { // Need to add after mScanner is initialized.
+            lifecycle.addObserver(mLifecycleObserver);
         }
     }
 
@@ -385,7 +376,7 @@ public class BaseWifiTracker {
         mIsScanningDisabled = true;
         // This method indicates SystemUI usage, which shouldn't output verbose logs since it's
         // always up.
-        sVerboseLogging = false;
+        mInjector.disableVerboseLogging();
     }
 
     /**
@@ -840,6 +831,7 @@ public class BaseWifiTracker {
                         Log.v(mTag, "Issuing scan request from WifiScanner");
                     }
                     wifiScanner.startScan(scanSettings, mFirstScanListener);
+                    notifyOnScanRequested();
                     return;
                 } else {
                     Log.e(mTag, "Failed to retrieve WifiScanner!");
@@ -874,6 +866,7 @@ public class BaseWifiTracker {
             // Remove any pending scanLoops in case possiblyStartScanning was called more than once.
             removeCallbacksAndMessages(null);
             mWifiManager.startScan();
+            notifyOnScanRequested();
             postDelayed(this::scanLoop, mScanIntervalMillis);
         }
     }
@@ -896,6 +889,16 @@ public class BaseWifiTracker {
     }
 
     /**
+     * Posts onScanRequested callback on the main thread.
+     */
+    @WorkerThread
+    private void notifyOnScanRequested() {
+        if (mListener != null) {
+            mMainHandler.post(mListener::onScanRequested);
+        }
+    }
+
+    /**
      * Base callback handling Wi-Fi state changes
      *
      * Subclasses should extend this for their own needs.
@@ -906,5 +909,10 @@ public class BaseWifiTracker {
          */
         @MainThread
         void onWifiStateChanged();
+
+        @MainThread
+        default void onScanRequested() {
+            // Do nothing.
+        }
     }
 }
